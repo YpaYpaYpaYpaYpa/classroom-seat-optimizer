@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="학생 데이터와 관계 조건을 반영해 자리·짝·모둠을 추천하는 교사용 도구"
+    />
+    <title>자리배치 도우미</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#top" aria-label="자리배치 도우미 홈">
+        <span class="brand-mark">S</span>
+        <span>자리배치 도우미</span>
+      </a>
+      <div class="topbar-meta">
+        <span class="class-name" id="className">2학년 5반</span>
+        <span class="save-status" id="saveStatus" aria-live="polite">로컬 편집 중</span>
+        <span class="account-identity" id="accountIdentity"></span>
+        <button class="account-button" type="button" id="authButton">회원가입·로그인</button>
+        <button class="text-button" type="button" id="resetButton">처음으로</button>
+      </div>
+    </header>
+
+    <main id="top">
+      <p class="connection-notice" id="connectionNotice" role="status" hidden></p>
+      <section class="intro">
+        <div>
+          <p class="eyebrow">CLASSROOM GROUPING TOOL</p>
+          <h1>학생 조건을 반영해<br />더 빠르게 배치하세요.</h1>
+          <p class="intro-copy">
+            성적, 관계, 시력 조건을 설정하면 개인 자리·짝·모둠 배치에 활용할 수 있는
+            결과를 만듭니다.
+          </p>
+        </div>
+        <div class="progress" aria-label="현재 작업 단계">
+          <div class="progress-step is-active"><span>1</span>학생 입력</div>
+          <i></i>
+          <div class="progress-step"><span>2</span>조건 설정</div>
+          <i></i>
+          <div class="progress-step"><span>3</span>결과 확인</div>
+        </div>
+      </section>
+
+      <section class="input-source panel" aria-labelledby="inputSourceTitle">
+        <div>
+          <h2 id="inputSourceTitle">학생 데이터를 어떻게 입력할까요?</h2>
+          <p class="helper-text">계정별로 학생·관계·설정을 DB에 저장합니다. 저장된 데이터는 ‘불러오기’를 눌렀을 때만 화면에 적용되며, 로그인만으로 현재 입력을 덮어쓰지 않습니다.</p>
+        </div>
+        <fieldset class="source-options">
+          <legend class="sr-only">학생 데이터 입력 방식</legend>
+          <label><input type="radio" name="inputSource" value="new" checked /> 새로 입력</label>
+          <label><input type="radio" name="inputSource" value="saved" /> 저장된 학생 데이터 사용</label>
+        </fieldset>
+        <div class="source-actions">
+          <button class="outline-button" type="button" id="loadDataButton" hidden>저장 데이터 불러오기</button>
+          <button class="outline-button" type="button" id="clearInputButton">입력 내용 비우기</button>
+          <button class="text-button" type="button" id="exampleButton">예시 데이터 넣기</button>
+        </div>
+        <p class="helper-text" id="inputSourceMessage" role="status">학번과 성적을 직접 입력합니다. 예시 데이터는 시연용입니다.</p>
+      </section>
+
+      <div class="validation-summary" id="validationSummary" role="alert" tabindex="-1" hidden></div>
+
+      <section class="workspace" aria-label="자리 배치 설정 화면">
+        <div class="left-column">
+          <article class="panel student-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="section-index">01</p>
+                <h2>학생 데이터</h2>
+                <p>학번, 1~10 정수 성적, 시력 고려 대상 여부를 입력합니다.</p>
+              </div>
+              <button class="outline-button" type="button" id="addStudentButton">+ 학생 추가</button>
+            </div>
+
+            <div class="student-count-control">
+              <label for="studentCount">학생 수 <span class="helper-text">(현재 버전: 1~60명)</span></label>
+              <div class="count-actions">
+                <input id="studentCount" type="number" min="1" max="60" step="1" value="1" required />
+                <button class="outline-button" type="button" id="applyStudentCountButton">입력칸 적용</button>
+                <span id="studentCountStatus" role="status">입력칸 1개</span>
+              </div>
+              <p class="helper-text">학생 수를 늘리면 빈 입력칸을 추가합니다. 줄이면 마지막 학생부터 제외합니다.</p>
+            </div>
+            <div class="student-list" id="studentList"></div>
+            <p class="helper-text">시력 수치나 실명은 받지 않습니다. 시력 고려 여부만 선택합니다.</p>
+          </article>
+
+          <article class="panel relationship-panel">
+            <div class="panel-heading compact">
+              <div>
+                <p class="section-index">02</p>
+                <h2>학생 간 관계</h2>
+                <p>두 학생이 친구인지 앙숙인지 입력합니다. 친구의 배치 방식은 오른쪽 조건에서 따로 선택합니다.</p>
+              </div>
+              <button class="outline-button" type="button" id="addRelationButton">+ 관계 추가</button>
+            </div>
+            <p class="helper-text" id="relationEmpty">입력된 관계가 없습니다. 필요한 관계만 추가합니다.</p>
+            <div class="relation-list" id="relationList"></div>
+            <p class="helper-text">앙숙 분리는 친구 관계 설정과 무관한 필수 조건입니다. 같은 두 학생의 관계는 한 번만 입력합니다.</p>
+          </article>
+        </div>
+
+        <aside class="settings-panel" aria-label="배치 조건 설정">
+          <div>
+            <p class="section-index">03</p>
+            <h2>배치 조건</h2>
+            <p class="settings-copy">이번 배치에서 중요하게 반영할 조건을 고릅니다.</p>
+          </div>
+
+          <label class="field-label" for="groupCount">나눌 그룹 수</label>
+          <div class="stepper">
+            <button type="button" class="stepper-button" data-step="-1" aria-label="그룹 수 줄이기">−</button>
+            <input id="groupCount" type="number" min="1" max="1" step="1" value="1" required aria-describedby="groupHelp groupSummary" />
+            <button type="button" class="stepper-button" data-step="1" aria-label="그룹 수 늘리기">+</button>
+          </div>
+          <p class="field-note" id="groupHelp">개인 자리: 학생 수 / 짝: 학생 수 ÷ 2 / 모둠: 원하는 모둠 수를 입력합니다.</p>
+          <div class="group-presets">
+            <button class="outline-button" type="button" id="individualButton">개인 자리</button>
+            <button class="outline-button" type="button" id="pairsButton">짝 배치</button>
+          </div>
+          <p class="field-note" id="pairsHelp">짝 배치는 학생 수가 짝수일 때 선택할 수 있습니다.</p>
+          <p class="group-summary" id="groupSummary" role="status"></p>
+
+          <label class="field-label" for="groupColumns">한 줄에 놓을 그룹 수 (가로 열 수)</label>
+          <input class="layout-columns-input" id="groupColumns" type="number" min="1" max="1" step="1" value="1" required aria-describedby="layoutHelp layoutSummary" />
+          <p class="field-note" id="layoutHelp">개인 자리에서는 한 줄의 학생 수입니다. 모둠 배치에서는 한 줄의 모둠 수입니다.</p>
+          <button class="outline-button" type="button" id="squareLayoutButton">정사각형에 가깝게</button>
+          <p class="group-summary" id="layoutSummary" role="status"></p>
+
+          <fieldset>
+            <legend>성적 분포</legend>
+            <div class="choice-list" id="scoreMode">
+              <label><input type="radio" name="scoreMode" value="balanced" checked /><span>균등하게<small>그룹 간 평균 성적 차이를 줄이기</small></span></label>
+              <label><input type="radio" name="scoreMode" value="similar" /><span>불균등하게<small>비슷한 성적의 학생끼리 모으기</small></span></label>
+              <label><input type="radio" name="scoreMode" value="ignore" /><span>상관없이<small>성적을 배치 조건에서 제외</small></span></label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>친구끼리 배치 방식</legend>
+            <div class="choice-list" id="friendMode">
+              <label><input type="radio" name="friendMode" value="apart" /><span>떨어뜨리기<small>친구를 서로 다른 그룹에 배치</small></span></label>
+              <label><input type="radio" name="friendMode" value="together" checked /><span>붙이기<small>친구를 같은 그룹에 배치</small></span></label>
+              <label><input type="radio" name="friendMode" value="ignore" /><span>상관없이<small>친구 관계를 배치 조건에서 제외</small></span></label>
+            </div>
+          </fieldset>
+          <p class="required-condition">필수 조건 · 앙숙은 서로 다른 그룹</p>
+
+          <label class="toggle-row">
+            <span>
+              <strong>시력 조건 반영</strong>
+              <small>고려 대상 학생은 앞자리 우선</small>
+            </span>
+            <input type="checkbox" id="visionToggle" checked />
+            <span class="toggle-track" aria-hidden="true"></span>
+          </label>
+
+          <label class="toggle-row">
+            <span>
+              <strong>이전 결과와 중복 피하기</strong>
+              <small>같은 조합을 가능한 한 줄이기</small>
+            </span>
+            <input type="checkbox" id="duplicateToggle" />
+            <span class="toggle-track" aria-hidden="true"></span>
+          </label>
+
+          <p class="field-note">이번 방문에서 생성한 최근 배치와 비교합니다. 로그인하면 저장된 최근 배치도 비교 대상으로 불러옵니다.</p>
+          <button class="save-button" type="button" id="saveButton">내 계정에 저장</button>
+          <p class="field-note">저장 버튼을 누르면 학생·관계·설정과 현재 생성된 배치 결과를 함께 저장합니다. 배치 계산만으로는 DB를 덮어쓰지 않습니다.</p>
+          <button class="primary-button" type="button" id="generateButton">배치 결과 만들기 <span>→</span></button>
+          <p class="helper-text process-status" id="processStatus" role="status"></p>
+        </aside>
+      </section>
+
+      <section class="result-section" id="resultSection" aria-labelledby="resultTitle">
+        <div class="result-title-row">
+          <div>
+            <p class="eyebrow">RESULT PREVIEW</p>
+            <h2 id="resultTitle">배치 결과 미리보기</h2>
+          </div>
+          <p id="resultMessage">학생과 조건을 입력한 뒤 결과를 만들어 보세요.</p>
+        </div>
+        <div class="result-grid">
+          <div class="seating-preview" id="seatingPreview">
+            <div id="seatingCanvas">
+              <div class="front-label">교실 앞</div>
+              <div class="desk-grid" id="deskGrid"></div>
+              <div class="back-label">교실 뒤</div>
+            </div>
+          </div>
+          <div class="result-summary">
+            <h3>조건 반영도</h3>
+            <div class="metric"><span>그룹 인원 균형</span><strong id="balanceMetric">–</strong></div>
+            <div class="metric"><span>성적 분포</span><strong id="scoreMetric">–</strong></div>
+            <div class="metric"><span>친구 배치</span><strong id="friendMetric">–</strong></div>
+            <div class="metric"><span>앙숙 분리</span><strong id="rivalMetric">–</strong></div>
+            <div class="metric"><span>시력 대상 맨 앞줄</span><strong id="visionMetric">–</strong></div>
+            <div class="metric"><span>이전 조합 중복 회피</span><strong id="previousMetric">–</strong></div>
+            <p id="resultDetails"></p>
+            <details class="metric-explanation">
+              <summary>반영도 계산 기준</summary>
+              <p>성적 균등은 그룹 평균 차이가 작을수록, 불균등은 같은 그룹의 성적이 비슷할수록 높습니다. 친구·앙숙은 입력된 관계 중 조건을 충족한 비율입니다. 시력은 고려 대상 중 맨 앞줄에 앉은 비율이며, 중복 회피는 같은 그룹의 학생 쌍 중 이전에 함께 배치되지 않은 비율입니다.</p>
+            </details>
+          </div>
+        </div>
+        <p class="helper-text">배치도가 화면보다 넓으면 배치도 안에서 좌우로 스크롤할 수 있습니다. 선택한 가로 열 수는 유지됩니다.</p>
+      </section>
+    </main>
+
+    <template id="studentTemplate">
+      <div class="student-row">
+        <label><span>학번</span><input class="student-id" inputmode="numeric" pattern="[0-9]+" required placeholder="예: 2501" aria-label="학번" /></label>
+        <label><span>성적 (1–10 정수)</span><input class="student-score" type="number" min="1" max="10" step="1" required placeholder="1~10" aria-label="성적" /></label>
+        <label class="vision-check"><input class="student-vision" type="checkbox" /><span>시력 고려</span></label>
+        <button class="remove-button" type="button" aria-label="학생 삭제">×</button>
+        <p class="field-error" hidden></p>
+      </div>
+    </template>
+
+    <template id="relationTemplate">
+      <div class="relation-row">
+        <select class="relation-first" aria-label="첫 번째 학생" required></select>
+        <select class="relation-type" aria-label="관계 유형" required>
+          <option value="friend">친구</option>
+          <option value="rival">앙숙</option>
+        </select>
+        <select class="relation-second" aria-label="두 번째 학생" required></select>
+        <button class="remove-button" type="button" aria-label="관계 삭제">×</button>
+        <p class="field-error" hidden></p>
+      </div>
+    </template>
+
+    <dialog class="auth-dialog" id="confirmInputDialog" aria-labelledby="confirmInputTitle" aria-describedby="confirmInputMessage">
+      <h2 id="confirmInputTitle">입력 변경 확인</h2>
+      <p id="confirmInputMessage"></p>
+      <form method="dialog" class="confirm-actions">
+        <button class="outline-button" value="cancel" autofocus>취소</button>
+        <button class="outline-button" value="confirm">변경 적용</button>
+      </form>
+    </dialog>
+
+    <dialog class="auth-dialog" id="authDialog" aria-labelledby="authTitle">
+      <form method="dialog" class="dialog-close-row"><button aria-label="닫기">×</button></form>
+      <p class="section-index">SUPABASE AUTH</p>
+      <h2 id="authTitle">계정으로 로그인</h2>
+      <p>이메일 계정별로 학생 데이터를 저장합니다. 다른 계정에는 내 학생 데이터가 표시되지 않습니다.</p>
+      <div class="auth-mode-buttons" role="group" aria-label="계정 작업 선택">
+        <button class="outline-button" type="button" id="signInModeButton" aria-pressed="true">로그인</button>
+        <button class="outline-button" type="button" id="signUpButton" aria-pressed="false">회원가입</button>
+      </div>
+      <form id="authForm">
+        <label>이메일<input id="emailInput" type="email" autocomplete="email" required placeholder="teacher@example.com" /></label>
+        <label>비밀번호<input id="passwordInput" type="password" autocomplete="current-password" required placeholder="비밀번호" /></label>
+        <label id="passwordConfirmLabel" hidden>비밀번호 확인<input id="passwordConfirmInput" type="password" autocomplete="new-password" minlength="8" placeholder="비밀번호를 다시 입력" disabled /></label>
+        <p class="field-note" id="passwordHelp">비밀번호는 이 사이트의 학생 DB에 저장하지 않으며 Supabase Auth에서 관리합니다.</p>
+        <div class="auth-actions">
+          <button type="submit" class="primary-button" id="authSubmitButton">로그인 →</button>
+          <button type="button" class="outline-button" id="resendEmailButton" hidden>인증 메일 다시 보내기</button>
+        </div>
+        <p class="auth-message" id="authMessage" aria-live="polite"></p>
+      </form>
+    </dialog>
+
+    <script type="module" src="script.js"></script>
+  </body>
+</html>
