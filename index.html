@@ -53,7 +53,7 @@
         <fieldset class="source-options">
           <legend class="sr-only">학생 데이터 입력 방식</legend>
           <label><input type="radio" name="inputSource" value="new" checked /> 새로 입력</label>
-          <label><input type="radio" name="inputSource" value="saved" /> 저장된 학생 데이터 사용</label>
+          <label><input type="radio" name="inputSource" value="saved" /> 저장된 학생 데이터 불러오기·수정</label>
         </fieldset>
         <div class="source-actions">
           <button class="outline-button" type="button" id="loadDataButton" hidden>저장 데이터 불러오기</button>
@@ -75,6 +75,15 @@
                 <p>학번, 1~10 정수 성적, 시력 고려 대상 여부를 입력합니다.</p>
               </div>
               <button class="outline-button" type="button" id="addStudentButton">+ 학생 추가</button>
+            </div>
+
+            <div class="saved-data-editor" id="savedDataEditor" hidden>
+              <div>
+                <strong>저장된 학생 데이터 수정</strong>
+                <p class="helper-text">아래 입력란에서 학번·성적·시력 고려 여부를 수정하거나 학생을 추가·삭제할 수 있습니다. 관계와 배치 설정도 함께 저장합니다.</p>
+                <p class="helper-text" id="savedDataStatus" role="status"></p>
+              </div>
+              <button class="outline-button" type="button" id="saveEditedDataButton">수정 내용 저장</button>
             </div>
 
             <div class="student-count-control">
@@ -214,7 +223,7 @@
 
     <template id="studentTemplate">
       <div class="student-row">
-        <label><span>학번</span><input class="student-id" inputmode="numeric" pattern="[0-9]+" required placeholder="예: 2501" aria-label="학번" /></label>
+        <label><span>학번</span><input class="student-id" inputmode="numeric" pattern="[0-9]+" required aria-label="학번" /></label>
         <label><span>성적 (1–10 정수)</span><input class="student-score" type="number" min="1" max="10" step="1" required placeholder="1~10" aria-label="성적" /></label>
         <label class="vision-check"><input class="student-vision" type="checkbox" /><span>시력 고려</span></label>
         <button class="remove-button" type="button" aria-label="학생 삭제">×</button>

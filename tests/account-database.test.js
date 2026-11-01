@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
-import { snapshotPayload } from '../account-service.js';
+import { snapshotPayload, classroomSnapshot } from '../account-service.js';
 import { solveArrangement } from '../arrangement.js';
 
 const A = '11111111-1111-4111-8111-111111111111';
@@ -128,5 +128,26 @@ test('account database: atomic saves, RLS isolation and schema upgrades', { time
     assert.equal((await asUser(A, () => load(A))).classroom.revision, 2);
     const functions = await db.query("select prosecdef from pg_proc where proname in ('save_classroom','load_classroom','classroom_backend_status')");
     assert.equal(functions.rows.length, 3); assert.ok(functions.rows.every(row => row.prosecdef === false));
+  });
+  await t.test('loaded data can be edited and saved again with renames, additions and removals', async () => {
+    const otherAccountBefore = await asUser(B, () => load(B));
+    await asUser(A, async () => {
+      const edited = classroomSnapshot(await load(A), A);
+      edited.students = edited.students.filter(student => student.id !== '2502');
+      Object.assign(edited.students[0], { id: '2701', score: 7, vision: false });
+      edited.students.push({ id: '2704', score: 6, vision: true });
+      edited.relations = edited.relations
+        .filter(relation => relation.first !== '2502' && relation.second !== '2502')
+        .map(relation => ({ ...relation, first: relation.first === '2501' ? '2701' : relation.first, second: relation.second === '2501' ? '2701' : relation.second }));
+      await save(A, snapshotPayload(edited), edited.classroom.revision);
+      const reloaded = classroomSnapshot(await load(A), A);
+      const fields = students => students.map(({ id, score, vision }) => ({ id, score, vision }));
+      assert.deepEqual(fields(reloaded.students), fields(edited.students));
+      assert.deepEqual(reloaded.relations, [{ first: '2701', second: '2503', type: 'rival' }]);
+      assert.deepEqual(reloaded.settings, edited.settings);
+      assert.equal(reloaded.classroom.revision, edited.classroom.revision + 1);
+      assert.equal((await db.query('select * from public.arrangement_assignments')).rows.length, 4);
+    });
+    assert.deepEqual(await asUser(B, () => load(B)), otherAccountBefore);
   });
 });

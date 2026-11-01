@@ -29,6 +29,7 @@ const authDialog = $("#authDialog");
 const authMessage = $("#authMessage");
 let currentUser = null;
 let currentClass = null;
+let editingSavedData = false;
 let inputRevision = 0;
 let loadRequest = 0;
 let hasValidated = false;
@@ -55,9 +56,10 @@ function cancelGeneration() {
 }
 
 function setStatus(message, tone = "neutral") {
-  const element = $("#saveStatus");
-  element.textContent = message;
-  element.style.color = tone === "success" ? "#17855c" : tone === "error" ? "#a83e4a" : "#758296";
+  for (const element of [$("#saveStatus"), $("#savedDataStatus")]) {
+    element.textContent = message;
+    element.style.color = tone === "success" ? "#17855c" : tone === "error" ? "#a83e4a" : "#758296";
+  }
 }
 
 function addStudent(student = { id: "", score: "", vision: false }) {
@@ -179,7 +181,7 @@ function noteInputChange() {
     document.querySelectorAll(".progress-step").forEach((step, index) => step.classList.toggle("is-active", index === 0));
   }
   if (hasValidated) showValidation(false);
-  if (currentUser && !dataJob) setStatus("변경사항 있음 · 내 계정에 저장을 눌러 주세요.");
+  if (currentUser && !dataJob) setStatus(editingSavedData ? "변경사항 있음 · 수정 내용 저장을 눌러 주세요." : "변경사항 있음 · 내 계정에 저장을 눌러 주세요.");
 }
 
 function hasEnteredData() {
@@ -263,6 +265,8 @@ async function applyStudentCount() {
 
 async function resetInput(useExample = false, ask = true) {
   if (ask && hasEnteredData() && !await confirmInputChange("현재 입력을 바꿀까요? 저장하지 않은 입력은 사라집니다. DB의 저장 데이터는 변경하지 않습니다.")) return false;
+  editingSavedData = false;
+  updateDataButtons();
   hasValidated = false; clearValidation();
   arrangementHistory = [];
   studentList.replaceChildren(); relationList.replaceChildren();
@@ -281,7 +285,7 @@ function updateSourceChoice() {
   const saved = $("input[name=inputSource]:checked").value === "saved";
   $("#loadDataButton").hidden = !saved;
   $("#inputSourceMessage").textContent = saved
-    ? "로그인 후 ‘저장 데이터 불러오기’를 누르면 학생·관계·설정값을 불러옵니다. 불러오기 전까지 현재 입력은 유지됩니다."
+    ? "로그인 후 ‘저장 데이터 불러오기’를 누르면 학생·관계·설정값을 불러와 수정할 수 있습니다. 수정한 내용은 ‘수정 내용 저장’을 눌러 반영합니다."
     : "학번과 성적을 직접 입력합니다. 기존 내용을 지우려면 ‘입력 내용 비우기’를 선택해 주세요.";
 }
 
@@ -381,6 +385,9 @@ function updateDataButtons() {
   $("#saveButton").disabled = Boolean(dataJob);
   $("#loadDataButton").disabled = Boolean(dataJob);
   $("#saveButton").textContent = dataJob?.type === "save" ? "내 계정에 저장 중…" : "내 계정에 저장";
+  $("#savedDataEditor").hidden = !editingSavedData;
+  $("#saveEditedDataButton").disabled = Boolean(dataJob);
+  $("#saveEditedDataButton").textContent = dataJob?.type === "save" ? "수정 내용 저장 중…" : "수정 내용 저장";
 }
 
 async function saveClassData() {
@@ -409,6 +416,7 @@ async function saveClassData() {
     const saved = await accountStore.save(input, { expectedRevision, result });
     if (!stillCurrent()) return false;
     currentClass = saved.classroom;
+    editingSavedData = true;
     $("#className").textContent = currentClass.name;
     setStatus(revision === inputRevision
       ? `${input.students.length}명·관계·설정${result ? "·배치 결과" : ""} 저장 완료`
@@ -498,14 +506,19 @@ async function loadClassData() {
   // Replace the current form only after every read has succeeded.
   if (currentClass?.id !== saved.classroom.id) arrangementHistory = [];
   currentClass = saved.classroom;
+  editingSavedData = true;
   studentList.replaceChildren(); relationList.replaceChildren();
   saved.students.forEach(addStudent);
   saved.relations.forEach(relation => addRelation(relation.first, relation.type, relation.second));
   applySettings(saved.settings);
   $("#className").textContent = currentClass.name;
+  $("input[name=inputSource][value=saved]").checked = true;
+  updateSourceChoice(); updateDataButtons();
   updateCounts(); hasValidated = false; clearValidation(); noteInputChange();
-  $("#inputSourceMessage").textContent = `${saved.students.length}명의 저장된 학생·관계·설정을 불러왔습니다. 수정 후 저장할 수 있습니다.`;
-  setStatus("내 계정의 저장 데이터를 불러왔습니다.", "success");
+  $("#inputSourceMessage").textContent = `${saved.students.length}명의 저장된 학생·관계·설정을 불러왔습니다. 아래 입력란에서 수정한 뒤 ‘수정 내용 저장’을 눌러 주세요.`;
+  setStatus("저장 데이터를 불러왔습니다. 아래 입력란에서 수정할 수 있습니다.", "success");
+  $(".student-panel").scrollIntoView({ behavior: "smooth", block: "start" });
+  studentRows()[0]?.querySelector(".student-id").focus({ preventScroll: true });
 }
 
 async function requestSavedData() {
@@ -530,7 +543,7 @@ function setSession(session) {
   $("#accountIdentity").textContent = currentUser?.email ?? "";
   $("#accountIdentity").title = currentUser?.email ?? "";
   if (previousUser !== currentUser?.id) {
-    cancelGeneration(); arrangementHistory = []; currentClass = null; dataJob = null; loadRequest++; updateDataButtons();
+    cancelGeneration(); arrangementHistory = []; currentClass = null; editingSavedData = false; dataJob = null; loadRequest++; updateDataButtons();
     // Do not make another Supabase call synchronously inside its auth callback.
     setTimeout(checkBackend, 0);
   }
@@ -651,6 +664,7 @@ groupCount.addEventListener("input", noteInputChange);
 groupCount.addEventListener("change", () => { updateLayoutControls(true); noteInputChange(); });
 groupColumns.addEventListener("input", noteInputChange);
 $("#saveButton").addEventListener("click", () => saveClassData());
+$("#saveEditedDataButton").addEventListener("click", () => saveClassData());
 $("#generateButton").addEventListener("click", generate);
 $("#authForm").addEventListener("submit", submitAuth);
 $("#signUpButton").addEventListener("click", () => setAuthMode("signup"));
