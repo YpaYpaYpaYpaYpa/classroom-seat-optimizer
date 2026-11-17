@@ -75,6 +75,45 @@ test('vision students get front priority without destroying team membership', ()
   assertHardConditions(input, result); assert.equal(result.metrics.vision, 100);
   assert.ok(result.seated.filter(student => student.vision).every(student => student.row === 0));
 });
+test('height targets occupy back rows and vision targets occupy front rows in a 5 by 5 classroom', () => {
+  const list = students(Array(25).fill(5));
+  list.slice(0, 3).forEach(student => { student.vision = true; });
+  list.slice(20).forEach(student => { student.height = true; });
+  const input = { students: list, relations: [], settings: settings({ groupCount: 25, groupColumns: 5, respectVision: true, respectHeight: true }) };
+  const result = solveArrangement(input, options); assertHardConditions(input, result);
+  assert.ok(result.seated.filter(student => student.vision).every(student => student.row === 0));
+  assert.ok(result.seated.filter(student => student.height).every(student => student.row === 4));
+  assert.equal(result.metrics.height, 100);
+});
+test('height uses the actual last occupied row, including partial rows and grouped seats', () => {
+  for (const [count, groupCount, columns, targetCount, expectedBack] of [[5, 5, 2, 3, 1], [6, 1, 1, 2, 2]]) {
+    const list = students(Array(count).fill(5)); list.slice(-targetCount).forEach(student => { student.height = true; });
+    const input = { students: list, relations: [], settings: settings({ groupCount, groupColumns: columns, respectVision: false, respectHeight: true }) };
+    const result = solveArrangement(input, options); assertHardConditions(input, result);
+    const lastRow = Math.max(...result.seated.map(student => student.row));
+    assert.equal(result.seated.filter(student => student.height && student.row === lastRow).length, expectedBack);
+    assert.equal(result.details.heightBack, expectedBack);
+    assert.equal(result.metrics.height, Math.round(100 * expectedBack / targetCount));
+  }
+});
+test('simultaneous vision and height selects vision priority and reports the conflict', () => {
+  const list = students(Array(6).fill(5));
+  Object.assign(list[0], { vision: true, height: true }); list[5].height = true;
+  const input = { students: list, relations: [], settings: settings({ groupCount: 6, groupColumns: 3, respectVision: true, respectHeight: true }) };
+  const result = solveArrangement(input, options); assertHardConditions(input, result);
+  assert.equal(result.seated.find(student => student.id === '1').row, 0);
+  assert.equal(result.seated.find(student => student.id === '6').row, 1);
+  assert.equal(result.details.heightConflict, 1); assert.equal(result.details.heightTotal, 1);
+});
+test('height is ignored when disabled and a single row does not report a misleading back-row percentage', () => {
+  const list = students(Array(4).fill(5)); list[0].height = true;
+  const base = { students: list, relations: [], settings: settings({ groupCount: 4, groupColumns: 2, respectVision: false }) };
+  const disabled = solveArrangement({ ...base, settings: { ...base.settings, respectHeight: false } }, options);
+  assert.deepEqual(disabled.seated, solveArrangement(base, options).seated);
+  assert.equal(disabled.metrics.height, null);
+  const oneRow = solveArrangement({ ...base, settings: { ...base.settings, groupColumns: 4, respectHeight: true } }, options);
+  assert.equal(oneRow.metrics.height, null); assert.equal(oneRow.details.lastRow, 0);
+});
 test('repeat avoidance uses all prior group pairs and ignores group numbering', () => {
   const input = { students: students([5, 5, 5, 5]), relations: [], settings: settings({ avoidPrevious: true }) };
   const result = solveArrangement(input, { ...options, previousArrangements: [[['1', '2'], ['3', '4']], [['4', '3'], ['2', '1']]] });

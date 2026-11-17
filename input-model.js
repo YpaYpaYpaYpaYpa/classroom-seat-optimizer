@@ -22,6 +22,9 @@ export function validateInput({ students, relations, settings, studentCount = st
     if (!Number.isInteger(student.score) || student.score < 1 || student.score > 10) {
       issue('student-score', `${index + 1}번째 학생의 성적은 1~10 사이의 정수여야 합니다.`, index);
     }
+    if (student.height !== undefined && typeof student.height !== 'boolean') {
+      issue('student-height', `${index + 1}번째 학생의 키 고려 여부를 확인해 주세요.`, index);
+    }
   });
   const pairs = new Map();
   relations.forEach((relation, index) => {
@@ -58,6 +61,7 @@ export function validateInput({ students, relations, settings, studentCount = st
   }
   if (!['balanced', 'similar', 'ignore'].includes(settings.scoreMode)) issue('scoreMode', '성적 분포 방식을 선택해 주세요.');
   if (!['together', 'apart', 'ignore'].includes(settings.friendMode)) issue('friendMode', '친구 관계 반영 방식을 선택해 주세요.');
+  if (settings.respectHeight !== undefined && typeof settings.respectHeight !== 'boolean') issue('heightToggle', '키 조건 반영 여부를 확인해 주세요.');
   return issues;
 }
 
@@ -93,6 +97,7 @@ export function settingsFromClass(classroom) {
     scoreMode: classroom.score_mode,
     friendMode: classroom.friend_mode ?? (classroom.respect_friend ? 'together' : 'ignore'),
     respectVision: classroom.respect_vision,
+    respectHeight: classroom.respect_height ?? true,
     avoidPrevious: classroom.avoid_previous,
   };
 }
@@ -105,6 +110,7 @@ export function settingsForClass(settings) {
     friend_mode: settings.friendMode,
     respect_friend: settings.friendMode !== 'ignore',
     respect_vision: settings.respectVision,
+    respect_height: settings.respectHeight ?? true,
     avoid_previous: settings.avoidPrevious,
   };
 }

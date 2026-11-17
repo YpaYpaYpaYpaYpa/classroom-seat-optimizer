@@ -12,6 +12,7 @@ create table if not exists public.classes (
   respect_friend boolean not null default true,
   friend_mode text not null default 'together' check (friend_mode in ('together', 'apart', 'ignore')),
   respect_vision boolean not null default true,
+  respect_height boolean not null default true,
   avoid_previous boolean not null default false,
   revision bigint not null default 0,
   created_at timestamptz not null default now(),
@@ -28,6 +29,7 @@ update public.classes set group_columns = least(3, group_count) where group_colu
 alter table public.classes alter column group_columns set default 3;
 alter table public.classes alter column group_columns set not null;
 alter table public.classes add column if not exists revision bigint not null default 0;
+alter table public.classes add column if not exists respect_height boolean not null default true;
 
 create table if not exists public.students (
   id uuid primary key default gen_random_uuid(),
@@ -35,11 +37,14 @@ create table if not exists public.students (
   student_number text not null,
   score integer not null default 5 check (score between 1 and 10),
   vision_priority boolean not null default false,
+  height_priority boolean not null default false,
   is_active boolean not null default true,
   sort_order integer not null default 0,
   created_at timestamptz not null default now(),
   unique (class_id, student_number)
 );
+
+alter table public.students add column if not exists height_priority boolean not null default false;
 
 create table if not exists public.student_relations (
   id uuid primary key default gen_random_uuid(),
@@ -124,7 +129,7 @@ grant select, insert, update, delete on public.classes, public.students, public.
 -- Public health check contains no account or student data.
 create or replace function public.classroom_backend_status() returns jsonb
 language sql immutable security invoker set search_path = ''
-as $$ select '{"schema_version":3}'::jsonb $$;
+as $$ select '{"schema_version":3,"height_supported":true}'::jsonb $$;
 
 -- One read statement gives a consistent snapshot of the current user's class.
 create or replace function public.load_classroom(p_owner_id uuid) returns jsonb
@@ -171,13 +176,15 @@ begin
   if exists (select 1 from jsonb_array_elements(v_students) s where jsonb_typeof(s) is distinct from 'object'
     or jsonb_typeof(s->'id') is distinct from 'string' or coalesce(s->>'id', '') !~ '^[0-9]+$'
     or jsonb_typeof(s->'score') is distinct from 'number' or coalesce(s->>'score', '') !~ '^([1-9]|10)$'
-    or jsonb_typeof(s->'vision') is distinct from 'boolean')
+    or jsonb_typeof(s->'vision') is distinct from 'boolean'
+    or (s ? 'height' and jsonb_typeof(s->'height') is distinct from 'boolean'))
     or (select count(distinct s->>'id') from jsonb_array_elements(v_students) s) <> v_count then raise exception 'CLASSROOM_INVALID_INPUT'; end if;
   if jsonb_typeof(v_settings->'groupCount') is distinct from 'number' or coalesce(v_settings->>'groupCount', '') !~ '^([1-9]|[1-5][0-9]|60)$'
     or jsonb_typeof(v_settings->'groupColumns') is distinct from 'number' or coalesce(v_settings->>'groupColumns', '') !~ '^([1-9]|[1-5][0-9]|60)$'
     or coalesce(v_settings->>'scoreMode', '') not in ('balanced', 'similar', 'ignore')
     or coalesce(v_settings->>'friendMode', '') not in ('together', 'apart', 'ignore')
     or jsonb_typeof(v_settings->'respectVision') is distinct from 'boolean'
+    or (v_settings ? 'respectHeight' and jsonb_typeof(v_settings->'respectHeight') is distinct from 'boolean')
     or jsonb_typeof(v_settings->'avoidPrevious') is distinct from 'boolean' then raise exception 'CLASSROOM_INVALID_INPUT'; end if;
   v_groups := (v_settings->>'groupCount')::integer; v_columns := (v_settings->>'groupColumns')::integer;
   if v_groups > v_count or v_columns > v_groups then raise exception 'CLASSROOM_INVALID_INPUT'; end if;
@@ -196,19 +203,22 @@ begin
     if p_expected_revision <> v_class.revision then raise exception 'CLASSROOM_VERSION_CONFLICT' using errcode = 'PT409'; end if;
     update public.classes set group_count = v_groups, group_columns = v_columns,
       score_mode = v_settings->>'scoreMode', friend_mode = v_settings->>'friendMode', respect_friend = (v_settings->>'friendMode' <> 'ignore'),
-      respect_vision = (v_settings->>'respectVision')::boolean, avoid_previous = (v_settings->>'avoidPrevious')::boolean,
+      respect_vision = (v_settings->>'respectVision')::boolean, respect_height = coalesce((v_settings->>'respectHeight')::boolean, respect_height),
+      avoid_previous = (v_settings->>'avoidPrevious')::boolean,
       revision = revision + 1, updated_at = now() where id = v_class.id returning * into v_class;
   else
     if p_expected_revision is not null and p_expected_revision <> 0 then raise exception 'CLASSROOM_VERSION_CONFLICT' using errcode = 'PT409'; end if;
-    insert into public.classes (owner_id, name, group_count, group_columns, score_mode, friend_mode, respect_friend, respect_vision, avoid_previous, revision)
+    insert into public.classes (owner_id, name, group_count, group_columns, score_mode, friend_mode, respect_friend, respect_vision, respect_height, avoid_previous, revision)
     values (p_owner_id, '2학년 5반', v_groups, v_columns, v_settings->>'scoreMode', v_settings->>'friendMode', v_settings->>'friendMode' <> 'ignore',
-      (v_settings->>'respectVision')::boolean, (v_settings->>'avoidPrevious')::boolean, 1) returning * into v_class;
+      (v_settings->>'respectVision')::boolean, coalesce((v_settings->>'respectHeight')::boolean, true), (v_settings->>'avoidPrevious')::boolean, 1) returning * into v_class;
   end if;
   update public.students set is_active = false where class_id = v_class.id;
-  insert into public.students (class_id, student_number, score, vision_priority, sort_order, is_active)
-    select v_class.id, s->>'id', (s->>'score')::integer, (s->>'vision')::boolean, ordinality - 1, true
+  insert into public.students (class_id, student_number, score, vision_priority, height_priority, sort_order, is_active)
+    select v_class.id, s->>'id', (s->>'score')::integer, (s->>'vision')::boolean, coalesce((s->>'height')::boolean, false), ordinality - 1, true
     from jsonb_array_elements(v_students) with ordinality as items(s, ordinality)
     on conflict (class_id, student_number) do update set score = excluded.score, vision_priority = excluded.vision_priority,
+      height_priority = case when exists (select 1 from jsonb_array_elements(v_students) item where item->>'id' = excluded.student_number and item ? 'height')
+        then excluded.height_priority else students.height_priority end,
       sort_order = excluded.sort_order, is_active = true;
   delete from public.student_relations where class_id = v_class.id;
   insert into public.student_relations (class_id, first_student_id, second_student_id, relation_type)

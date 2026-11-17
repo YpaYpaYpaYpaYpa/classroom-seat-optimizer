@@ -69,18 +69,25 @@ function prepare(input, previousArrangements) {
 
 // The selected columns control both group positions and front-row capacity.
 // Each group block has up to two desks across, without splitting its members.
-export function createLayout(groups, respectVision, random = () => 0.5, columns) {
+export function createLayout(groups, respectVision, random = () => 0.5, columns, respectHeight = false) {
   const seatColumns = groups.every(group => group.length === 1) ? 1 : 2;
   const groupColumns = resolveGroupColumns(groups.length, columns);
   const blockRows = Math.max(...groups.map(group => Math.ceil(group.length / seatColumns)));
+  const front = student => Boolean(respectVision && student.vision);
+  // When both preferences are selected for one student, front priority wins.
+  const back = student => Boolean(respectHeight && student.height && !front(student));
   const ordered = shuffle(groups, random).map(group => {
     const members = shuffle(group, random);
-    if (respectVision) members.sort((a, b) => Number(Boolean(b.vision)) - Number(Boolean(a.vision)));
+    if (respectVision || respectHeight) members.sort((a, b) =>
+      (Number(front(b)) - Number(front(a))) || (Number(back(a)) - Number(back(b))));
     return members;
   });
-  if (respectVision) ordered.sort((a, b) =>
-    Math.min(b.filter(student => student.vision).length, seatColumns) - Math.min(a.filter(student => student.vision).length, seatColumns)
-    || b.filter(student => student.vision).length - a.filter(student => student.vision).length);
+  if (respectVision || respectHeight) ordered.sort((a, b) => {
+    const af = a.filter(front).length, bf = b.filter(front).length;
+    const ab = a.filter(back).length, bb = b.filter(back).length;
+    return Math.min(bf, seatColumns) - Math.min(af, seatColumns) || bf - af
+      || Math.min(ab, seatColumns) - Math.min(bb, seatColumns) || ab - bb;
+  });
   return {
     groupColumns, seatColumns, blockRows,
     groups: ordered.map((members, groupIndex) => ({
@@ -133,8 +140,18 @@ function evaluate(groups, context) {
   });
   const visionValue = !settings.respectVision || !visionTotal ? null :
     0.75 * visionFront / visionTotal + 0.25 * (1 - visionDistance / (visionTotal * maxRow));
+  // Evaluate height on actual physical rows, including uneven or partially filled rows.
+  const heightTotal = settings.respectHeight ? students.filter(student => student.height && !(settings.respectVision && student.vision)).length : 0;
+  let heightValue = null;
+  if (heightTotal) {
+    const layout = createLayout(groups.map(group => group.map(index => students[index])), settings.respectVision, () => 0.5, settings.groupColumns, true);
+    const seated = layout.groups.flatMap(group => group.members);
+    const lastRow = Math.max(...seated.map(student => student.row));
+    if (lastRow > 0) heightValue = seated.filter(student => student.height && !(settings.respectVision && student.vision))
+      .reduce((sum, student) => sum + student.row / lastRow, 0) / heightTotal;
+  }
   const historyValue = !settings.avoidPrevious || !historyCount || !totalPairs ? null : 1 - repeatedPairs / totalPairs;
-  const values = [scoreValue, friendValue, visionValue, historyValue].filter(value => value !== null);
+  const values = [scoreValue, friendValue, visionValue, heightValue, historyValue].filter(value => value !== null);
   const objective = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 1;
   return {
     objective,
@@ -239,11 +256,16 @@ export function solveArrangement(input, options = {}) {
       improve(initial, context, random, options.iterationsPerRestart ?? 700, budget, consider);
     }
   }
-  const layout = createLayout(best.groups.map(group => group.map(index => context.students[index])), input.settings.respectVision, random, input.settings.groupColumns);
+  const layout = createLayout(best.groups.map(group => group.map(index => context.students[index])), input.settings.respectVision, random, input.settings.groupColumns, input.settings.respectHeight);
   const seated = layout.groups.flatMap(group => group.members).sort((a, b) => a.row - b.row || a.column - b.column);
   const frontVision = seated.filter(student => student.vision && student.row === 0).length;
+  const lastRow = Math.max(...seated.map(student => student.row));
+  const heightConflict = input.settings.respectHeight && input.settings.respectVision ? seated.filter(student => student.height && student.vision).length : 0;
+  const heightStudents = input.settings.respectHeight ? seated.filter(student => student.height && !(input.settings.respectVision && student.vision)) : [];
+  const heightBack = heightStudents.filter(student => student.row === lastRow).length;
   const metrics = { ...best.evaluated.metrics };
   if (metrics.vision !== null) metrics.vision = percent(frontVision / best.evaluated.details.visionTotal);
+  metrics.height = heightStudents.length && lastRow > 0 ? percent(heightBack / heightStudents.length) : null;
   // Validate the final answer independently before exposing it to the UI.
   const assignments = new Map(seated.map(student => [student.id, student.groupNumber]));
   const hardValid = seated.length === input.students.length && assignments.size === input.students.length
@@ -253,7 +275,7 @@ export function solveArrangement(input, options = {}) {
   metrics.balance = 100;
   return {
     status: 'success', layout, seated, metrics,
-    details: { ...best.evaluated.details, visionFront: frontVision,
+    details: { ...best.evaluated.details, visionFront: frontVision, heightTotal: heightStudents.length, heightBack, heightConflict, lastRow,
       means: layout.groups.map(group => group.members.reduce((sum, student) => sum + student.score, 0) / group.members.length) },
     diagnostics: { method: exhaustive && !feasibility.limited ? 'exhaustive' : 'search', candidates, operations, seed, elapsedMs: Math.round(now() - start), objective: best.evaluated.objective },
   };

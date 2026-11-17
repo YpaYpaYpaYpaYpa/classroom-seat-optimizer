@@ -5,7 +5,7 @@ import { validateInput, groupSummary, layoutSummary, settingsForClass, settingsF
 const input = () => ({
   students: [{ id: '2501', score: 1, vision: true }, { id: '2502', score: 10, vision: false }],
   relations: [],
-  settings: { groupCount: 2, groupColumns: 2, scoreMode: 'balanced', friendMode: 'together', respectVision: true, avoidPrevious: false },
+  settings: { groupCount: 2, groupColumns: 2, scoreMode: 'balanced', friendMode: 'together', respectVision: true, respectHeight: true, avoidPrevious: false },
 });
 
 test('valid plan inputs and all preference combinations', () => {

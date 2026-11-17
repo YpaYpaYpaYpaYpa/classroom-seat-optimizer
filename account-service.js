@@ -28,6 +28,7 @@ export function accountErrorMessage(error) {
   if (code === 'weak_password') return '더 안전한 비밀번호를 사용해 주세요. 서버의 비밀번호 정책도 충족해야 합니다.';
   if (['email_address_invalid', 'validation_failed'].includes(code)) return '이메일과 비밀번호 형식을 확인해 주세요.';
   if (code === 'signup_disabled') return '현재 서버에서 회원가입이 비활성화되어 있습니다.';
+  if (code === 'HEIGHT_SCHEMA_REQUIRED') return '키 고려 정보를 저장하려면 Supabase에서 키 고려 DB 업데이트 SQL을 먼저 실행해 주세요.';
   if (code === 'email_address_not_authorized') return '현재 Supabase 메일 발송 설정에서 이 이메일로 인증 메일을 보낼 수 없습니다. 관리자 SMTP 설정이 필요합니다.';
   if (code === 'over_email_send_rate_limit' || /email rate limit exceeded/i.test(message)) return '인증 메일 발송 한도에 도달했습니다. 이미 받은 인증 메일과 스팸함을 확인해 주세요. 메일이 없다면 한도 회복을 기다리거나 관리자에게 SMTP 설정을 요청해 주세요.';
   if (code?.includes('rate_limit') || error?.status === 429) return '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.';
@@ -40,13 +41,13 @@ export function snapshotPayload(input, result = null) {
   const issues = validateInput(input);
   if (issues.length) throw Object.assign(new Error(issues[0].message), { code: 'INVALID_INPUT' });
   const payload = {
-    students: input.students.map((student, order) => ({ id: student.id, score: student.score, vision: Boolean(student.vision), order })),
+    students: input.students.map((student, order) => ({ id: student.id, score: student.score, vision: Boolean(student.vision), height: Boolean(student.height), order })),
     relations: input.relations.map(({ first, second, type }) => ({ first, second, type })),
     settings: {
       groupCount: input.settings.groupCount,
       groupColumns: resolveGroupColumns(input.settings.groupCount, input.settings.groupColumns),
       scoreMode: input.settings.scoreMode, friendMode: input.settings.friendMode,
-      respectVision: Boolean(input.settings.respectVision), avoidPrevious: Boolean(input.settings.avoidPrevious),
+      respectVision: Boolean(input.settings.respectVision), respectHeight: input.settings.respectHeight ?? true, avoidPrevious: Boolean(input.settings.avoidPrevious),
     },
   };
   if (result) {
@@ -69,7 +70,7 @@ export function classroomSnapshot(data, userId) {
   const byId = new Map(students.map(student => [student.id, student.student_number]));
   return {
     classroom: data.classroom,
-    students: students.map(student => ({ id: student.student_number, score: student.score, vision: student.vision_priority, order: student.sort_order })),
+    students: students.map(student => ({ id: student.student_number, score: student.score, vision: student.vision_priority, height: student.height_priority ?? false, order: student.sort_order })),
     relations: (data.relations ?? []).map(relation => ({ first: byId.get(relation.first_student_id), second: byId.get(relation.second_student_id), type: relation.relation_type })),
     settings: settingsFromClass(data.classroom),
   };
@@ -109,9 +110,17 @@ export function createAccountStore(client, { timeoutMs = 12000 } = {}) {
     load: () => request('load_classroom', {}),
     async save(input, { expectedRevision = null, result = null } = {}) {
       if (writing) throw Object.assign(new Error('저장 중'), { code: 'SAVE_IN_PROGRESS' });
+      if (!user) throw Object.assign(new Error('로그인 필요'), { code: 'SIGNED_OUT' });
       const payload = snapshotPayload(input, result);
       writing = true;
-      try { return await request('save_classroom', { p_snapshot: payload, p_expected_revision: expectedRevision }); }
+      try {
+        // Legacy servers ignore unknown JSON fields; refuse to silently lose height choices.
+        if (payload.students.some(student => student.height) || !payload.settings.respectHeight) {
+          const status = await request('classroom_backend_status', {}, false);
+          if (status?.height_supported !== true) throw Object.assign(new Error('키 고려 DB 업데이트 필요'), { code: 'HEIGHT_SCHEMA_REQUIRED' });
+        }
+        return await request('save_classroom', { p_snapshot: payload, p_expected_revision: expectedRevision });
+      }
       finally { writing = false; }
     },
   };

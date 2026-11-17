@@ -32,7 +32,7 @@
           <p class="eyebrow">CLASSROOM GROUPING TOOL</p>
           <h1>학생 조건을 반영해<br />더 빠르게 배치하세요.</h1>
           <p class="intro-copy">
-            성적, 관계, 시력 조건을 설정하면 개인 자리·짝·모둠 배치에 활용할 수 있는
+            성적, 관계, 시력과 키 조건을 설정하면 개인 자리·짝·모둠 배치에 활용할 수 있는
             결과를 만듭니다.
           </p>
         </div>
@@ -72,7 +72,7 @@
               <div>
                 <p class="section-index">01</p>
                 <h2>학생 데이터</h2>
-                <p>학번, 1~10 정수 성적, 시력 고려 대상 여부를 입력합니다.</p>
+                <p>학번, 1~10 정수 성적, 시력·키 고려 대상 여부를 입력합니다.</p>
               </div>
               <button class="outline-button" type="button" id="addStudentButton">+ 학생 추가</button>
             </div>
@@ -80,7 +80,7 @@
             <div class="saved-data-editor" id="savedDataEditor" hidden>
               <div>
                 <strong>저장된 학생 데이터 수정</strong>
-                <p class="helper-text">아래 입력란에서 학번·성적·시력 고려 여부를 수정하거나 학생을 추가·삭제할 수 있습니다. 관계와 배치 설정도 함께 저장합니다.</p>
+                <p class="helper-text">아래 입력란에서 학번·성적·시력·키 고려 여부를 수정하거나 학생을 추가·삭제할 수 있습니다. 관계와 배치 설정도 함께 저장합니다.</p>
                 <p class="helper-text" id="savedDataStatus" role="status"></p>
               </div>
               <button class="outline-button" type="button" id="saveEditedDataButton">수정 내용 저장</button>
@@ -96,7 +96,7 @@
               <p class="helper-text">학생 수를 늘리면 빈 입력칸을 추가합니다. 줄이면 마지막 학생부터 제외합니다.</p>
             </div>
             <div class="student-list" id="studentList"></div>
-            <p class="helper-text">시력 수치나 실명은 받지 않습니다. 시력 고려 여부만 선택합니다.</p>
+            <p class="helper-text">시력과 키는 수치 대신 고려 여부를 선택합니다. 키 고려를 체크하면 뒷자리 우선 대상이 됩니다.</p>
           </article>
 
           <article class="panel relationship-panel">
@@ -171,6 +171,16 @@
 
           <label class="toggle-row">
             <span>
+              <strong>키 조건 반영</strong>
+              <small>키 고려 대상은 뒷자리 우선</small>
+            </span>
+            <input type="checkbox" id="heightToggle" checked />
+            <span class="toggle-track" aria-hidden="true"></span>
+          </label>
+          <p class="field-note">시력과 키를 모두 고려하는 학생은 앞자리 시력 조건을 우선합니다.</p>
+
+          <label class="toggle-row">
+            <span>
               <strong>이전 결과와 중복 피하기</strong>
               <small>같은 조합을 가능한 한 줄이기</small>
             </span>
@@ -192,7 +202,10 @@
             <p class="eyebrow">RESULT PREVIEW</p>
             <h2 id="resultTitle">배치 결과 미리보기</h2>
           </div>
-          <p id="resultMessage">학생과 조건을 입력한 뒤 결과를 만들어 보세요.</p>
+          <div class="result-actions">
+            <p id="resultMessage">학생과 조건을 입력한 뒤 결과를 만들어 보세요.</p>
+            <button class="outline-button" type="button" id="studentViewButton" disabled>학생용 자리배치표 보기</button>
+          </div>
         </div>
         <div class="result-grid">
           <div class="seating-preview" id="seatingPreview">
@@ -209,11 +222,12 @@
             <div class="metric"><span>친구 배치</span><strong id="friendMetric">–</strong></div>
             <div class="metric"><span>앙숙 분리</span><strong id="rivalMetric">–</strong></div>
             <div class="metric"><span>시력 대상 맨 앞줄</span><strong id="visionMetric">–</strong></div>
+            <div class="metric"><span>키 대상 맨 뒷줄</span><strong id="heightMetric">–</strong></div>
             <div class="metric"><span>이전 조합 중복 회피</span><strong id="previousMetric">–</strong></div>
             <p id="resultDetails"></p>
             <details class="metric-explanation">
               <summary>반영도 계산 기준</summary>
-              <p>성적 균등은 그룹 평균 차이가 작을수록, 불균등은 같은 그룹의 성적이 비슷할수록 높습니다. 친구·앙숙은 입력된 관계 중 조건을 충족한 비율입니다. 시력은 고려 대상 중 맨 앞줄에 앉은 비율이며, 중복 회피는 같은 그룹의 학생 쌍 중 이전에 함께 배치되지 않은 비율입니다.</p>
+              <p>성적 균등은 그룹 평균 차이가 작을수록, 불균등은 같은 그룹의 성적이 비슷할수록 높습니다. 친구·앙숙은 입력된 관계 중 조건을 충족한 비율입니다. 시력은 고려 대상 중 맨 앞줄에 앉은 비율입니다. 키는 시력 우선 대상자를 제외한 키 고려 대상 중 맨 뒷줄에 앉은 비율입니다. 중복 회피는 같은 그룹의 학생 쌍 중 이전에 함께 배치되지 않은 비율입니다.</p>
             </details>
           </div>
         </div>
@@ -226,6 +240,7 @@
         <label><span>학번</span><input class="student-id" inputmode="numeric" pattern="[0-9]+" required aria-label="학번" /></label>
         <label><span>성적 (1–10 정수)</span><input class="student-score" type="number" min="1" max="10" step="1" required placeholder="1~10" aria-label="성적" /></label>
         <label class="vision-check"><input class="student-vision" type="checkbox" /><span>시력 고려</span></label>
+        <label class="height-check"><input class="student-height" type="checkbox" /><span>키 고려</span></label>
         <button class="remove-button" type="button" aria-label="학생 삭제">×</button>
         <p class="field-error" hidden></p>
       </div>
@@ -243,6 +258,20 @@
         <p class="field-error" hidden></p>
       </div>
     </template>
+
+    <dialog class="student-view-dialog" id="studentViewDialog" aria-labelledby="studentViewTitle">
+      <div class="student-view-heading">
+        <h2 id="studentViewTitle">학생용 자리배치표</h2>
+        <form method="dialog"><button class="outline-button" type="submit">닫기</button></form>
+      </div>
+      <div class="seating-preview student-view-preview">
+        <div id="studentViewCanvas">
+          <div class="front-label">교실 앞</div>
+          <div class="desk-grid" id="studentViewGrid"></div>
+          <div class="back-label">교실 뒤</div>
+        </div>
+      </div>
+    </dialog>
 
     <dialog class="auth-dialog" id="confirmInputDialog" aria-labelledby="confirmInputTitle" aria-describedby="confirmInputMessage">
       <h2 id="confirmInputTitle">입력 변경 확인</h2>

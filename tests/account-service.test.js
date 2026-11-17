@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createAccountStore, createAuthService, validateCredentials, snapshotPayload, accountErrorMessage } from '../account-service.js';
+import { createAccountStore, createAuthService, validateCredentials, snapshotPayload, classroomSnapshot, accountErrorMessage } from '../account-service.js';
 import { solveArrangement } from '../arrangement.js';
 
 const input = () => ({
@@ -64,6 +64,35 @@ test('saving makes one RPC containing an explicit owner, version and complete sn
   assert.equal(saved.students[0].id, '2501');
   assert.deepEqual(saved.relations, [{ first: '2501', second: '2502', type: 'friend' }]);
   assert.equal(saved.settings.groupColumns, 2);
+});
+
+test('height choices are never silently discarded by an older database', async () => {
+  const calls = [];
+  let heightSupported = false;
+  const client = { rpc(name, args) { calls.push({ name, args }); return { abortSignal: async () => ({
+    data: name === 'classroom_backend_status' ? { schema_version: 3, height_supported: heightSupported } : envelope(),
+  }) }; } };
+  const store = createAccountStore(client); store.setUser({ id: 'A' });
+  const data = input(); data.students[1].height = true; data.settings.respectHeight = true;
+  await assert.rejects(store.save(data), { code: 'HEIGHT_SCHEMA_REQUIRED' });
+  assert.deepEqual(calls.map(call => call.name), ['classroom_backend_status']);
+  heightSupported = true; await store.save(data);
+  assert.equal(calls.at(-1).name, 'save_classroom');
+  assert.equal(calls.at(-1).args.p_snapshot.students[1].height, true);
+  assert.equal(calls.at(-1).args.p_snapshot.settings.respectHeight, true);
+});
+
+test('height choices and the on/off setting survive a database load', () => {
+  const saved = envelope();
+  saved.classroom.respect_height = false;
+  saved.students[1].height_priority = true;
+  const loaded = classroomSnapshot(saved, 'A');
+  assert.equal(loaded.students[0].height, false);
+  assert.equal(loaded.students[1].height, true);
+  assert.equal(loaded.settings.respectHeight, false);
+  const payload = snapshotPayload(loaded);
+  assert.equal(payload.students[1].height, true);
+  assert.equal(payload.settings.respectHeight, false);
 });
 
 test('signed-out or invalid input saves never call the DB', async () => {

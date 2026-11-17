@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { MAX_STUDENTS, validateInput, groupSummary, layoutSummary, resolveGroupColumns } from "./input-model.js";
 import { readSavedArrangements } from "./arrangement-history.js";
 import { createAccountStore, createAuthService, accountErrorMessage } from "./account-service.js";
+import { studentViewModel } from "./student-view.js";
 
 const supabase = import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ? createClient(
   import.meta.env.VITE_SUPABASE_URL,
@@ -25,6 +26,7 @@ const groupCount = $("#groupCount");
 const groupColumns = $("#groupColumns");
 const deskGrid = $("#deskGrid");
 const seatingCanvas = $("#seatingCanvas");
+const studentViewDialog = $("#studentViewDialog");
 const authDialog = $("#authDialog");
 const authMessage = $("#authMessage");
 let currentUser = null;
@@ -68,6 +70,7 @@ function addStudent(student = { id: "", score: "", vision: false }) {
   row.querySelector(".student-id").value = student.id;
   row.querySelector(".student-score").value = student.score;
   row.querySelector(".student-vision").checked = student.vision;
+  row.querySelector(".student-height").checked = Boolean(student.height);
   row.querySelector(".remove-button").addEventListener("click", () => {
     if (studentList.children.length === 1) return;
     const removed = removeStudentRows([row]);
@@ -169,6 +172,7 @@ function noteInputChange() {
   cancelGeneration();
   lastResult = null;
   lastResultRevision = -1;
+  clearStudentView();
   $("#groupSummary").textContent = groupSummary(studentList.children.length, Number(groupCount.value));
   updateLayoutControls();
   if (deskGrid.children.length) {
@@ -186,7 +190,7 @@ function noteInputChange() {
 
 function hasEnteredData() {
   return relationList.children.length > 0 || studentRows().some(row =>
-    row.querySelector(".student-id").value || row.querySelector(".student-score").value || row.querySelector(".student-vision").checked);
+    row.querySelector(".student-id").value || row.querySelector(".student-score").value || row.querySelector(".student-vision").checked || row.querySelector(".student-height").checked);
 }
 
 function clearValidation() {
@@ -295,6 +299,7 @@ function applySettings(settings) {
   document.querySelectorAll("input[name=scoreMode]").forEach(input => { input.checked = input.value === settings.scoreMode; });
   document.querySelectorAll("input[name=friendMode]").forEach(input => { input.checked = input.value === settings.friendMode; });
   $("#visionToggle").checked = settings.respectVision;
+  $("#heightToggle").checked = settings.respectHeight ?? true;
   $("#duplicateToggle").checked = settings.avoidPrevious;
 }
 
@@ -303,6 +308,7 @@ function getStudents() {
     id: row.querySelector(".student-id").value.trim(),
     score: row.querySelector(".student-score").value === "" ? NaN : Number(row.querySelector(".student-score").value),
     vision: row.querySelector(".student-vision").checked,
+    height: row.querySelector(".student-height").checked,
     order: index,
   }));
 }
@@ -324,6 +330,7 @@ function getSettings() {
     scoreMode: $("input[name=scoreMode]:checked")?.value,
     friendMode: $("input[name=friendMode]:checked")?.value,
     respectVision: $("#visionToggle").checked,
+    respectHeight: $("#heightToggle").checked,
     avoidPrevious: $("#duplicateToggle").checked,
   };
 }
@@ -350,10 +357,13 @@ function renderResult(result, settings, historyNote) {
       const desk = document.createElement("div");
       if (!student) { desk.className = "empty-desk"; desk.setAttribute("aria-hidden", "true"); }
       else {
-        desk.className = `desk${settings.respectVision && student.vision ? " vision" : ""}`;
+        desk.className = `desk${settings.respectVision && student.vision ? " vision" : settings.respectHeight && student.height ? " height" : ""}`;
         desk.textContent = student.id;
         if (settings.respectVision && student.vision) {
           const label = document.createElement("small"); label.textContent = "시력 고려"; desk.append(label);
+        }
+        if (settings.respectHeight && student.height) {
+          const label = document.createElement("small"); label.textContent = "키 고려"; desk.append(label);
         }
       }
       seats.append(desk);
@@ -365,12 +375,49 @@ function renderResult(result, settings, historyNote) {
   $("#friendMetric").textContent = settings.friendMode === "ignore" ? "미반영" : result.metrics.friend === null ? "관계 없음" : `${result.metrics.friend}%`;
   $("#rivalMetric").textContent = result.metrics.rival === null ? "관계 없음" : `${result.metrics.rival}%`;
   $("#visionMetric").textContent = !settings.respectVision ? "미반영" : result.metrics.vision === null ? "대상 없음" : `${result.metrics.vision}%`;
+  $("#heightMetric").textContent = !settings.respectHeight ? "미반영" : !result.details.heightTotal ? (result.details.heightConflict ? "시력 우선" : "대상 없음") : result.details.lastRow === 0 ? "한 줄 배치" : `${result.metrics.height}%`;
   $("#previousMetric").textContent = !settings.avoidPrevious ? "미반영" : !result.details.totalPairs ? "비교 조합 없음" : result.metrics.previous === null ? "기록 없음" : `${result.metrics.previous}%`;
   const scoreNote = settings.scoreMode === "balanced" ? `그룹 평균 성적 차이 ${result.details.meanGap.toFixed(2)}`
     : settings.scoreMode === "similar" ? `그룹 안 성적 편차 ${result.details.withinDeviation.toFixed(2)}` : "성적 미반영";
-  $("#resultDetails").textContent = `${scoreNote}. ${settings.respectVision ? `시력 고려 ${result.details.visionTotal}명 중 ${result.details.visionFront}명이 맨 앞줄.` : ""} ${historyNote}`;
+  const heightNote = !settings.respectHeight ? "" : result.details.lastRow === 0 && result.details.heightTotal ? "한 줄 배치에서는 앞·뒷자리 차이가 없습니다." : `키 고려 ${result.details.heightTotal}명 중 ${result.details.heightBack}명이 맨 뒷줄.`;
+  const conflictNote = result.details.heightConflict ? `시력·키를 모두 체크한 ${result.details.heightConflict}명은 시력 조건을 우선하여 키 반영도 대상에서 제외했습니다.` : "";
+  $("#resultDetails").textContent = `${scoreNote}. ${settings.respectVision ? `시력 고려 ${result.details.visionTotal}명 중 ${result.details.visionFront}명이 맨 앞줄.` : ""} ${heightNote} ${conflictNote} ${historyNote}`;
   $("#resultMessage").textContent = `${result.seated.length}명 · ${settings.groupCount}개 ${individual ? "개인 자리" : "그룹"} · 가로 ${result.layout.groupColumns}열 × 세로 ${Math.ceil(settings.groupCount / result.layout.groupColumns)}줄${individual ? "" : " (그룹 기준)"}`;
   document.querySelectorAll(".progress-step").forEach((step) => step.classList.add("is-active"));
+}
+
+function clearStudentView() {
+  if (studentViewDialog.open) studentViewDialog.close();
+  $("#studentViewGrid").replaceChildren();
+  $("#studentViewButton").disabled = true;
+}
+
+function showStudentView() {
+  if (!lastResult || lastResultRevision !== inputRevision || generationJob) return;
+  const view = studentViewModel(lastResult);
+  const grid = $("#studentViewGrid");
+  const individual = view.groups.every(group => group.members.length === 1);
+  grid.replaceChildren();
+  grid.style.setProperty("--group-columns", view.groupColumns);
+  $("#studentViewCanvas").style.minWidth = `${Math.max(180, view.groupColumns * (individual ? 92 : 160) + (view.groupColumns - 1) * 14)}px`;
+  view.groups.forEach(group => {
+    const block = document.createElement("section");
+    block.className = "group-block";
+    const heading = document.createElement("h3");
+    heading.textContent = individual ? `${group.groupNumber}번 자리` : `${group.groupNumber}그룹`;
+    const seats = document.createElement("div");
+    seats.className = "group-seats";
+    seats.style.setProperty("--seat-columns", view.seatColumns);
+    for (let slot = 0; slot < view.blockRows * view.seatColumns; slot++) {
+      const desk = document.createElement("div");
+      const student = group.members[slot];
+      if (student) { desk.className = "desk"; desk.textContent = student.id; }
+      else { desk.className = "empty-desk"; desk.setAttribute("aria-hidden", "true"); }
+      seats.append(desk);
+    }
+    block.append(heading, seats); grid.append(block);
+  });
+  studentViewDialog.showModal();
 }
 
 function requireLogin(message = "데이터를 저장하려면 먼저 로그인해 주세요.") {
@@ -434,6 +481,7 @@ async function generate() {
   if (generationJob) return;
   if (!validateForAction()) return;
   lastResult = null; lastResultRevision = -1;
+  clearStudentView();
   const input = { students: getStudents(), relations: getRelations(), settings: getSettings() };
   const revision = inputRevision;
   const userId = currentUser?.id;
@@ -478,6 +526,7 @@ async function generate() {
     if (input.settings.avoidPrevious && !result.details.historyCount && !history.length) historyNote = "비교할 이전 배치가 없어 이번 결과부터 기록합니다.";
     renderResult(result, input.settings, historyNote);
     lastResult = result; lastResultRevision = revision;
+    $("#studentViewButton").disabled = false;
     arrangementHistory = [...arrangementHistory, result.layout.groups.map(group => group.members.map(student => student.id))].slice(-20);
     $("#processStatus").textContent = "배치 계산을 완료했습니다.";
     $("#resultSection").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -659,13 +708,14 @@ $("#clearInputButton").addEventListener("click", () => resetInput());
 $("#exampleButton").addEventListener("click", () => resetInput(true));
 $("#loadDataButton").addEventListener("click", requestSavedData);
 document.querySelectorAll("input[name=inputSource]").forEach(input => input.addEventListener("change", () => { updateSourceChoice(); inputRevision++; }));
-document.querySelectorAll("input[name=scoreMode], input[name=friendMode], #visionToggle, #duplicateToggle").forEach(input => input.addEventListener("change", noteInputChange));
+document.querySelectorAll("input[name=scoreMode], input[name=friendMode], #visionToggle, #heightToggle, #duplicateToggle").forEach(input => input.addEventListener("change", noteInputChange));
 groupCount.addEventListener("input", noteInputChange);
 groupCount.addEventListener("change", () => { updateLayoutControls(true); noteInputChange(); });
 groupColumns.addEventListener("input", noteInputChange);
 $("#saveButton").addEventListener("click", () => saveClassData());
 $("#saveEditedDataButton").addEventListener("click", () => saveClassData());
 $("#generateButton").addEventListener("click", generate);
+$("#studentViewButton").addEventListener("click", showStudentView);
 $("#authForm").addEventListener("submit", submitAuth);
 $("#signUpButton").addEventListener("click", () => setAuthMode("signup"));
 $("#signInModeButton").addEventListener("click", () => setAuthMode("signin"));

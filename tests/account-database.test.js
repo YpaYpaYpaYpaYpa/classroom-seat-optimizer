@@ -13,6 +13,46 @@ const input = () => ({
   settings: { groupCount: 2, groupColumns: 2, scoreMode: 'balanced', friendMode: 'together', respectVision: true, avoidPrevious: false },
 });
 
+test('height migration preserves legacy data and old clients while enabling height round trips', { timeout: 60000 }, async t => {
+  const db = await PGlite.create(); t.after(() => db.close());
+  await db.exec(`
+    create role anon nologin; create role authenticated nologin;
+    create schema auth; create table auth.users(id uuid primary key);
+    create function auth.uid() returns uuid language sql stable as
+      $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
+    grant usage on schema auth, public to anon, authenticated;
+    grant execute on function auth.uid() to anon, authenticated;
+  `);
+  await db.exec(await readFile(new URL('./fixtures/schema-v3.sql', import.meta.url), 'utf8'));
+  await db.query('insert into auth.users(id) values ($1)', [A]);
+  await db.exec('set role authenticated');
+  await db.query("select set_config('request.jwt.claim.sub', $1, false)", [A]);
+  const save = (payload, version = null) => db.query('select public.save_classroom($1,$2::jsonb,$3) as data', [A, JSON.stringify(payload), version]).then(result => result.rows[0].data);
+  const load = () => db.query('select public.load_classroom($1) as data', [A]).then(result => result.rows[0].data);
+  const legacy = snapshotPayload(input());
+  delete legacy.settings.respectHeight; legacy.students.forEach(student => { delete student.height; });
+  const before = await save(legacy);
+  await db.exec('reset role');
+  const migration = await readFile(new URL('../supabase-height-migration.sql', import.meta.url), 'utf8');
+  await db.exec(migration); await db.exec(migration);
+  await db.exec('set role authenticated');
+  const after = await load();
+  assert.equal(after.classroom.id, before.classroom.id);
+  assert.equal(after.classroom.revision, before.classroom.revision);
+  assert.deepEqual(after.students.map(student => student.student_number), before.students.map(student => student.student_number));
+  assert.ok(after.students.every(student => student.height_priority === false));
+  assert.equal((await db.query('select public.classroom_backend_status() as status')).rows[0].status.height_supported, true);
+  const updated = snapshotPayload(input()); updated.students[1].height = true; updated.settings.respectHeight = false;
+  const saved = await save(updated, after.classroom.revision);
+  assert.equal(saved.students[1].height_priority, true); assert.equal(saved.classroom.respect_height, false);
+  const invalid = structuredClone(updated); invalid.students[0].height = 'yes';
+  await assert.rejects(save(invalid, saved.classroom.revision), /CLASSROOM_INVALID_INPUT/);
+  const oldClientSave = await save(legacy, saved.classroom.revision);
+  assert.equal(oldClientSave.students[1].height_priority, true);
+  assert.equal(oldClientSave.classroom.respect_height, false);
+  assert.equal(oldClientSave.relations.length, before.relations.length);
+});
+
 // Real PostgreSQL SQL/RLS execution in an isolated, in-memory test DB.
 // auth.users and auth.uid() are minimal test stubs, not an authentication server.
 test('account database: atomic saves, RLS isolation and schema upgrades', { timeout: 60000 }, async t => {
@@ -141,7 +181,7 @@ test('account database: atomic saves, RLS isolation and schema upgrades', { time
         .map(relation => ({ ...relation, first: relation.first === '2501' ? '2701' : relation.first, second: relation.second === '2501' ? '2701' : relation.second }));
       await save(A, snapshotPayload(edited), edited.classroom.revision);
       const reloaded = classroomSnapshot(await load(A), A);
-      const fields = students => students.map(({ id, score, vision }) => ({ id, score, vision }));
+      const fields = students => students.map(({ id, score, vision, height }) => ({ id, score, vision, height: height ?? false }));
       assert.deepEqual(fields(reloaded.students), fields(edited.students));
       assert.deepEqual(reloaded.relations, [{ first: '2701', second: '2503', type: 'rival' }]);
       assert.deepEqual(reloaded.settings, edited.settings);
