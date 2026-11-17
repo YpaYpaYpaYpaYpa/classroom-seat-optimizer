@@ -335,6 +335,28 @@ function getSettings() {
   };
 }
 
+function createDesk(id, vision, height) {
+  const desk = document.createElement("div");
+  if (id === undefined) {
+    desk.className = "empty-desk";
+    desk.setAttribute("aria-hidden", "true");
+    return desk;
+  }
+
+  desk.classList.add("desk");
+  desk.textContent = id;
+  if (vision) desk.classList.add("vision");
+  else if (height) desk.classList.add("height");
+
+  for (const text of [vision && "시력 고려", height && "키 고려"]) {
+    if (!text) continue;
+    const label = document.createElement("small");
+    label.textContent = text;
+    desk.append(label);
+  }
+  return desk;
+}
+
 function renderResult(result, settings, historyNote) {
   deskGrid.replaceChildren();
   deskGrid.style.setProperty("--group-columns", result.layout.groupColumns);
@@ -354,19 +376,7 @@ function renderResult(result, settings, historyNote) {
     seats.style.setProperty("--seat-columns", result.layout.seatColumns);
     for (let slot = 0; slot < result.layout.blockRows * result.layout.seatColumns; slot++) {
       const student = group.members[slot];
-      const desk = document.createElement("div");
-      if (!student) { desk.className = "empty-desk"; desk.setAttribute("aria-hidden", "true"); }
-      else {
-        desk.className = `desk${settings.respectVision && student.vision ? " vision" : settings.respectHeight && student.height ? " height" : ""}`;
-        desk.textContent = student.id;
-        if (settings.respectVision && student.vision) {
-          const label = document.createElement("small"); label.textContent = "시력 고려"; desk.append(label);
-        }
-        if (settings.respectHeight && student.height) {
-          const label = document.createElement("small"); label.textContent = "키 고려"; desk.append(label);
-        }
-      }
-      seats.append(desk);
+      seats.append(createDesk(student?.id, settings.respectVision && student?.vision, settings.respectHeight && student?.height));
     }
     block.append(title, description, seats); deskGrid.append(block);
   });
@@ -394,7 +404,7 @@ function clearStudentView() {
 
 function showStudentView() {
   if (!lastResult || lastResultRevision !== inputRevision || generationJob) return;
-  const view = studentViewModel(lastResult);
+  const view = studentViewModel(lastResult, getSettings());
   const grid = $("#studentViewGrid");
   const individual = view.groups.every(group => group.members.length === 1);
   grid.replaceChildren();
@@ -409,11 +419,8 @@ function showStudentView() {
     seats.className = "group-seats";
     seats.style.setProperty("--seat-columns", view.seatColumns);
     for (let slot = 0; slot < view.blockRows * view.seatColumns; slot++) {
-      const desk = document.createElement("div");
       const student = group.members[slot];
-      if (student) { desk.className = "desk"; desk.textContent = student.id; }
-      else { desk.className = "empty-desk"; desk.setAttribute("aria-hidden", "true"); }
-      seats.append(desk);
+      seats.append(createDesk(student?.id, student?.vision, student?.height));
     }
     block.append(heading, seats); grid.append(block);
   });
