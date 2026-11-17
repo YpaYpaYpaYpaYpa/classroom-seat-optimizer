@@ -12,9 +12,9 @@ const supabase = import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPAB
 const accountStore = supabase ? createAccountStore(supabase) : null;
 const authService = supabase ? createAuthService(supabase, `${window.location.origin}${window.location.pathname}`) : null;
 const starterStudents = [
-  { id: "2501", score: 8, vision: false }, { id: "2502", score: 4, vision: true },
-  { id: "2503", score: 7, vision: false }, { id: "2504", score: 5, vision: false },
-  { id: "2505", score: 9, vision: true }, { id: "2506", score: 6, vision: false },
+  { id: "1", score: 8, vision: false }, { id: "2", score: 4, vision: true },
+  { id: "3", score: 7, vision: false }, { id: "4", score: 5, vision: false },
+  { id: "5", score: 9, vision: true }, { id: "6", score: 6, vision: false },
 ];
 
 const $ = (selector) => document.querySelector(selector);
@@ -276,7 +276,8 @@ async function resetInput(useExample = false, ask = true) {
   studentList.replaceChildren(); relationList.replaceChildren();
   if (useExample) {
     starterStudents.forEach(addStudent);
-    addRelation("2501", "friend", "2503"); addRelation("2502", "rival", "2505");
+    addRelation("1", "friend", "3");
+    addRelation("2", "rival", "5");
   } else addStudent();
   applySettings({ groupCount: useExample ? 3 : 1, scoreMode: "balanced", friendMode: "together", respectVision: true, avoidPrevious: false });
   $("input[name=inputSource][value=new]").checked = true;
@@ -471,7 +472,6 @@ async function saveClassData() {
     if (!stillCurrent()) return false;
     currentClass = saved.classroom;
     editingSavedData = true;
-    $("#className").textContent = currentClass.name;
     setStatus(revision === inputRevision
       ? `${input.students.length}명·관계·설정${result ? "·배치 결과" : ""} 저장 완료`
       : "이전 입력은 저장됨 · 저장 중 수정한 내용은 아직 미저장", "success");
@@ -567,7 +567,6 @@ async function loadClassData() {
   saved.students.forEach(addStudent);
   saved.relations.forEach(relation => addRelation(relation.first, relation.type, relation.second));
   applySettings(saved.settings);
-  $("#className").textContent = currentClass.name;
   $("input[name=inputSource][value=saved]").checked = true;
   updateSourceChoice(); updateDataButtons();
   updateCounts(); hasValidated = false; clearValidation(); noteInputChange();
@@ -605,7 +604,6 @@ function setSession(session) {
   }
   if (previousUser && previousUser !== currentUser?.id) resetInput(false, false);
   if (previousUser && !currentUser) { $("#emailInput").value = ""; $("#resendEmailButton").hidden = true; }
-  if (previousUser !== currentUser?.id) $("#className").textContent = "2학년 5반";
   if (currentUser && authDialog.open) authDialog.close();
   setStatus(currentUser ? "로그인됨 · 저장 데이터를 선택해서 불러올 수 있습니다." : "로그인하면 DB에 저장할 수 있습니다.");
 }

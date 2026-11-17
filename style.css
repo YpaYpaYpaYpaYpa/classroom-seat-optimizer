@@ -36,7 +36,6 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .brand { display: inline-flex; gap: 10px; align-items: center; color: var(--ink); font-weight: 800; text-decoration: none; letter-spacing: -.02em; }
 .brand-mark { display: grid; place-items: center; width: 30px; height: 30px; color: white; background: var(--navy); border-radius: 9px; font-size: .88rem; }
 .topbar-meta { display: flex; gap: 14px; align-items: center; }
-.class-name { color: var(--muted); font-size: .9rem; }
 .save-status { color: #758296; font-size: .76rem; }
 .account-button { padding: 8px 11px; color: white; border: 0; border-radius: 8px; background: var(--navy); font-size: .82rem; font-weight: 800; }
 .text-button { border: 0; background: transparent; color: var(--navy); font-weight: 700; }
@@ -200,7 +199,7 @@ fieldset legend { margin-bottom: 8px; color: var(--ink); font-size: .86rem; }
 }
 @media (max-width: 620px) {
   .topbar { padding: 0 18px; }
-  .class-name, .save-status { display: none; }
+  .save-status { display: none; }
   main { width: min(100% - 28px, 1180px); padding-top: 34px; }
   .student-row { grid-template-columns: 1fr 1fr 28px; }
   .student-row .vision-check { grid-column: 1; grid-row: 2; }
